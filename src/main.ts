@@ -97,21 +97,22 @@ interface EmbeddedImage {
 
 // ========== Tauri API ==========
 
-let tauriDialog: typeof import('@tauri-apps/api/dialog') | null = null;
-let tauriFs: typeof import('@tauri-apps/api/fs') | null = null;
+// Tauri v2 plugin APIs
+let tauriDialog: typeof import('@tauri-apps/plugin-dialog') | null = null;
+let tauriFs: typeof import('@tauri-apps/plugin-fs') | null = null;
 let tauriEvent: typeof import('@tauri-apps/api/event') | null = null;
 let tauriPath: typeof import('@tauri-apps/api/path') | null = null;
-let tauriHttp: typeof import('@tauri-apps/api/http') | null = null;
-let tauriCli: typeof import('@tauri-apps/api/cli') | null = null;
+let tauriHttp: typeof import('@tauri-apps/plugin-http') | null = null;
+let tauriCli: typeof import('@tauri-apps/plugin-cli') | null = null;
 
 async function loadTauriApis() {
   try {
-    tauriDialog = await import('@tauri-apps/api/dialog');
-    tauriFs = await import('@tauri-apps/api/fs');
+    tauriDialog = await import('@tauri-apps/plugin-dialog');
+    tauriFs = await import('@tauri-apps/plugin-fs');
     tauriEvent = await import('@tauri-apps/api/event');
     tauriPath = await import('@tauri-apps/api/path');
-    tauriHttp = await import('@tauri-apps/api/http');
-    tauriCli = await import('@tauri-apps/api/cli');
+    tauriHttp = await import('@tauri-apps/plugin-http');
+    tauriCli = await import('@tauri-apps/plugin-cli');
     console.log('Tauri APIs loaded');
   } catch {
     console.log('Running in browser mode (Tauri APIs not available)');
@@ -267,7 +268,7 @@ class MdVimApp {
           
           if (imageExts.includes(ext)) {
             try {
-              const data = await tauriFs!.readBinaryFile(filePath);
+              const data = await tauriFs!.readFile(filePath);
               const blob = new Blob([new Uint8Array(data)]);
               const id = await this.addImage(blob, fileName);
               this.insertImageMarkdown(id, fileName.replace(/\.[^.]+$/, ''));
@@ -294,7 +295,7 @@ class MdVimApp {
                 await this.loadMdvim(filePath);
               } else {
                 // Load plain text/markdown file with encoding detection
-                const binaryData = await tauriFs!.readBinaryFile(filePath);
+                const binaryData = await tauriFs!.readFile(filePath);
                 const content = this.decodeWithAutoDetect(new Uint8Array(binaryData));
                 this.editor.setValue(content);
                 this.images.clear();
@@ -396,7 +397,7 @@ Enjoy editing!
       
       // Ensure config directory exists
       try {
-        await tauriFs.createDir(configDir, { recursive: true });
+        await tauriFs.mkdir(configDir, { recursive: true });
       } catch {
         // Directory may already exist
       }
@@ -1159,8 +1160,8 @@ Enjoy editing!
     // For now, just clear the editor
     if (tauriDialog) {
       // Close window via Tauri
-      import('@tauri-apps/api/window').then(({ appWindow }) => {
-        appWindow.close();
+      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+        getCurrentWindow().close();
       }).catch(() => {
         this.newFile();
       });
@@ -1188,7 +1189,7 @@ Enjoy editing!
       }
       
       // Read as binary for encoding detection
-      const binaryData = await tauriFs.readBinaryFile(resolvedPath);
+      const binaryData = await tauriFs.readFile(resolvedPath);
       const content = this.decodeWithAutoDetect(new Uint8Array(binaryData));
       
       this.editor.setValue(content);
@@ -1218,13 +1219,11 @@ Enjoy editing!
       if (tauriHttp) {
         const response = await tauriHttp.fetch(markdownUrl, {
           method: 'GET',
-          timeout: 30,
-          responseType: tauriHttp.ResponseType.Text,
         });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
-        content = response.data as string;
+        content = await response.text();
       } else {
         // Fallback to browser fetch (may fail due to CORS)
         const response = await fetch(markdownUrl);
@@ -1398,14 +1397,14 @@ Enjoy editing!
       if (tauriHttp) {
         const response = await tauriHttp.fetch(url, {
           method: 'GET',
-          timeout: 30,
-          responseType: tauriHttp.ResponseType.Binary,
         });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
-        const data = response.data as number[];
-        base64 = btoa(data.map(b => String.fromCharCode(b)).join(''));
+        const buffer = await response.arrayBuffer();
+        base64 = btoa(
+          new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+        );
         mimeType = this.guessMimeType(url);
       } else {
         // Fallback to browser fetch
@@ -1726,7 +1725,7 @@ ${htmlContent}
         
         if (filePath) {
           const pdfBlob = pdf.output('arraybuffer');
-          await tauriFs.writeBinaryFile(filePath, new Uint8Array(pdfBlob));
+          await tauriFs.writeFile(filePath, new Uint8Array(pdfBlob));
           this.fileStatus.textContent = '(PDF exported)';
         } else {
           this.fileStatus.textContent = '';
@@ -2982,7 +2981,7 @@ ${htmlContent}
       
       try {
         // Read as binary for encoding detection
-        const binaryData = await tauriFs.readBinaryFile(filePath);
+        const binaryData = await tauriFs.readFile(filePath);
         const content = this.decodeWithAutoDetect(new Uint8Array(binaryData));
         
         this.editor.setValue(content);
@@ -3326,7 +3325,7 @@ ${htmlContent}
           const paths = Array.isArray(selected) ? selected : [selected];
           for (const filePath of paths) {
             if (tauriFs) {
-              const data = await tauriFs.readBinaryFile(filePath);
+              const data = await tauriFs.readFile(filePath);
               const blob = new Blob([new Uint8Array(data)]);
               const fileName = filePath.split(/[/\\]/).pop() || 'image.png';
               const id = await this.addImage(blob, fileName);
@@ -3405,7 +3404,7 @@ ${htmlContent}
     
     // Save via Tauri
     if (tauriFs) {
-      await tauriFs.writeBinaryFile(filePath, content);
+      await tauriFs.writeFile(filePath, content);
       this.currentFilePath = filePath;
       this.fileName = filePath.split(/[/\\]/).pop() || 'Untitled';
       this.fileNameEl.textContent = this.fileName;
@@ -3421,7 +3420,7 @@ ${htmlContent}
     if (!tauriFs) return;
     
     try {
-      const content = await tauriFs.readBinaryFile(filePath);
+      const content = await tauriFs.readFile(filePath);
       const zip = await JSZip.loadAsync(content);
       
       // Load markdown content

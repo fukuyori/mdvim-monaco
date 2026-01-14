@@ -1,6 +1,6 @@
 [package]
-name = "mdvim-desktop"
-version = "0.8.4"
+name = "mdvim"
+version = "0.9.1"
 description = "Vim-style Markdown Editor - Desktop Application"
 authors = ["mdvim"]
 license = "MIT"
@@ -8,15 +8,17 @@ repository = ""
 edition = "2021"
 
 [build-dependencies]
-tauri-build = { version = "1.5", features = [] }
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "1.5", features = [ "dialog-all", "fs-all", "path-all", "shell-open"] }
+tauri = { version = "2", features = [] }
+tauri-plugin-cli = "2"
+tauri-plugin-http = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-pulldown-cmark = "0.9"
-chrono = "0.4"
-dirs = "5.0"
 
 [features]
 default = ["custom-protocol"]
@@ -27,4 +29,4 @@ panic = "abort"
 codegen-units = 1
 lto = true
 opt-level = "s"
-strip = true
+strip = false

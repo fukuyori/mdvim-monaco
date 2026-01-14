@@ -1,35 +1,42 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "mdvim",
+  "version": "0.9.1",
+  "identifier": "com.mdvim.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devPath": "http://localhost:3000",
-    "distDir": "../dist"
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../dist"
   },
-  "package": {
-    "productName": "mdvim",
-    "version": "0.9.0"
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "targets": "all"
   },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "fs": {
-        "all": true,
-        "scope": ["**"]
-      },
-      "dialog": {
-        "all": true
-      },
-      "path": {
-        "all": true
-      },
-      "shell": {
-        "open": true
-      },
-      "http": {
-        "all": true,
-        "scope": ["https://**", "http://**"]
-      }
+  "app": {
+    "security": {
+      "csp": null
     },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 800,
+        "resizable": true,
+        "title": "mdvim v0.9.1",
+        "width": 1200,
+        "minWidth": 600,
+        "minHeight": 400
+      }
+    ]
+  },
+  "plugins": {
     "cli": {
       "description": "mdvim - Markdown Editor with Vim keybindings",
       "args": [
@@ -40,33 +47,6 @@
           "description": "File to open"
         }
       ]
-    },
-    "bundle": {
-      "active": true,
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
-      "identifier": "com.mdvim.app",
-      "targets": "all"
-    },
-    "security": {
-      "csp": null
-    },
-    "windows": [
-      {
-        "fullscreen": false,
-        "height": 800,
-        "resizable": true,
-        "title": "mdvim",
-        "width": 1200,
-        "minWidth": 600,
-        "minHeight": 400,
-        "fileDropEnabled": true
-      }
-    ]
+    }
   }
 }

@@ -43,6 +43,21 @@ Vimキーバインドを搭載したMarkdownエディタ。Monaco Editorベー�
 
 ### ソースからビルド
 
+#### ビルドスクリプトを使用（推奨）
+
+```bash
+# Linux (Ubuntu 24.04以降)
+./scripts/build-linux.sh
+
+# macOS
+./scripts/build-macos.sh
+
+# Windows (コマンドプロンプトで実行)
+scripts\build-windows.bat
+```
+
+#### 手動ビルド
+
 ```bash
 # リポジトリをクローン
 git clone https://github.com/user/mdvim-monaco.git

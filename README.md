@@ -43,6 +43,21 @@ Download from [Releases](https://github.com/user/mdvim-monaco/releases).
 
 ### Build from Source
 
+#### Using Build Scripts (Recommended)
+
+```bash
+# Linux (Ubuntu 24.04+)
+./scripts/build-linux.sh
+
+# macOS
+./scripts/build-macos.sh
+
+# Windows (run in Command Prompt)
+scripts\build-windows.bat
+```
+
+#### Manual Build
+
 ```bash
 # Clone repository
 git clone https://github.com/user/mdvim-monaco.git
