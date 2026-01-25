@@ -47,6 +47,13 @@
       "identifier": "fs:scope",
       "allow": ["**", "$HOME/**", "$DOCUMENT/**", "$DOWNLOAD/**", "$DESKTOP/**"]
     },
-    "http:default"
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "http://**" },
+        { "url": "https://**" }
+      ],
+      "deny": []
+    }
   ]
 }

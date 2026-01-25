@@ -45,6 +45,36 @@
     </header>
 
     <main id="main-content">
+      <!-- Vertical Tabs (Project mode) -->
+      <div id="vertical-tabs" class="vertical-tabs hidden">
+        <div class="tab-list"></div>
+        <div class="tab-actions">
+          <button id="new-tab-btn" title="New File">+</button>
+        </div>
+      </div>
+
+      <!-- Explorer Panel (Project mode) -->
+      <div id="explorer-pane" class="explorer-panel hidden">
+        <div class="explorer-header">
+          <span>Explorer</span>
+          <div class="explorer-actions">
+            <button id="new-file-btn" title="New File">+</button>
+            <button id="search-btn" title="Search (Ctrl+Shift+F)">🔍</button>
+            <button id="refresh-tree-btn" title="Refresh">⟳</button>
+          </div>
+        </div>
+        <!-- Search Panel -->
+        <div id="search-panel" class="search-panel hidden">
+          <div class="search-input-container">
+            <input type="text" id="search-input" placeholder="Search in project..." />
+            <button id="search-close-btn" title="Close">×</button>
+          </div>
+          <div id="search-results" class="search-results"></div>
+        </div>
+        <div id="file-tree" class="file-tree"></div>
+        <div id="explorer-resizer" class="resizer"></div>
+      </div>
+
       <div id="toc-pane" class="pane">
         <div id="toc-header">
           <span>Table of Contents</span>
@@ -55,6 +85,11 @@
       </div>
       <div id="editor-pane" class="pane">
         <div id="editor-toolbar">
+          <button id="btn-explorer-toggle" title="Explorer (Ctrl+E)" class="hidden">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </button>
           <button id="btn-toc-toggle" title="Table of Contents (目次)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -129,12 +164,44 @@
             </table>
           </div>
           <div class="help-section">
+            <h3>Project Commands</h3>
+            <table>
+              <tr><td><kbd>:project new</kbd></td><td>Create new project</td></tr>
+              <tr><td><kbd>:project open</kbd></td><td>Open project</td></tr>
+              <tr><td><kbd>:project save</kbd></td><td>Save project</td></tr>
+              <tr><td><kbd>:project close</kbd></td><td>Close project</td></tr>
+              <tr><td><kbd>:vnew [name]</kbd></td><td>New file in project</td></tr>
+              <tr><td><kbd>:vpaste [name]</kbd></td><td>New file from clipboard</td></tr>
+              <tr><td><kbd>:bn / :bnext</kbd></td><td>Next buffer</td></tr>
+              <tr><td><kbd>:bp / :bprev</kbd></td><td>Previous buffer</td></tr>
+              <tr><td><kbd>:b [name]</kbd></td><td>Switch to buffer</td></tr>
+              <tr><td><kbd>:ls / :buffers</kbd></td><td>List buffers</td></tr>
+              <tr><td><kbd>:bd</kbd></td><td>Close buffer</td></tr>
+              <tr><td><kbd>:Ex / :explorer</kbd></td><td>Toggle explorer</td></tr>
+              <tr><td><kbd>:layout [preset]</kbd></td><td>Set layout (default, obsidian, minimal, writer, code)</td></tr>
+            </table>
+          </div>
+          <div class="help-section">
             <h3>Image Insert</h3>
             <table>
               <tr><td><kbd>Ctrl+V</kbd></td><td>Paste image from clipboard</td></tr>
               <tr><td><kbd>Drag&Drop</kbd></td><td>Drop image file onto editor</td></tr>
               <tr><td><kbd>:image</kbd></td><td>Select image file</td></tr>
               <tr><td><kbd>🖼️ button</kbd></td><td>Select image file</td></tr>
+            </table>
+          </div>
+          <div class="help-section">
+            <h3>Import / Export</h3>
+            <table>
+              <tr><td><kbd>:imp</kbd></td><td>Open import dialog</td></tr>
+              <tr><td><kbd>:imp [path/url]</kbd></td><td>Import file or URL</td></tr>
+              <tr><td><kbd>:exp</kbd></td><td>Open export dialog</td></tr>
+              <tr><td><kbd>:exp md</kbd></td><td>Export current page as MD</td></tr>
+              <tr><td><kbd>:exp html</kbd></td><td>Export current page as HTML</td></tr>
+              <tr><td><kbd>:exp all md</kbd></td><td>Export all pages to MD folder</td></tr>
+              <tr><td><kbd>:exp all merge</kbd></td><td>Export all pages merged</td></tr>
+              <tr><td><kbd>:exp all html</kbd></td><td>Export all pages as HTML</td></tr>
+              <tr><td><kbd>:exp mdbook</kbd></td><td>Export as mdbook format</td></tr>
             </table>
           </div>
           <div class="help-section">
@@ -187,6 +254,87 @@
               <tr><td>.mdvim files</td><td>Open with images</td></tr>
             </table>
           </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Export Modal -->
+    <div id="export-modal" class="modal hidden">
+      <div class="modal-content export-modal-content">
+        <div class="modal-header">
+          <h2>Export</h2>
+          <button id="export-close-btn" class="modal-close">&times;</button>
+        </div>
+        <div class="export-options">
+          <div class="export-section">
+            <label class="export-label">Scope</label>
+            <div class="export-radio-group">
+              <label><input type="radio" name="export-scope" value="current" checked> Current Page</label>
+              <label><input type="radio" name="export-scope" value="all"> All Pages</label>
+            </div>
+          </div>
+          
+          <div class="export-section">
+            <label class="export-label">Format</label>
+            <select id="export-format">
+              <option value="md">Markdown (images as files)</option>
+              <option value="md-inline">Markdown (images inline)</option>
+              <option value="md-merged">Markdown (merged)</option>
+              <option value="html">HTML (single page)</option>
+              <option value="html-multi">HTML (multi-page site)</option>
+              <option value="mdbook">mdbook format</option>
+              <option value="pdf">PDF</option>
+            </select>
+          </div>
+          
+          <div class="export-section">
+            <label class="export-label">Options</label>
+            <div class="export-checkbox-group">
+              <label><input type="checkbox" id="export-include-images" checked> Include images</label>
+              <label><input type="checkbox" id="export-include-toc"> Include table of contents</label>
+              <label><input type="checkbox" id="export-number-headings"> Number headings</label>
+            </div>
+          </div>
+          
+          <div class="export-actions">
+            <button id="export-cancel-btn" class="btn-secondary">Cancel</button>
+            <button id="export-execute-btn" class="btn-primary">Export</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Progress Modal -->
+    <div id="progress-modal" class="modal hidden">
+      <div class="modal-content progress-modal-content">
+        <div class="progress-header">
+          <span id="progress-title">Processing...</span>
+        </div>
+        <div class="progress-body">
+          <div class="progress-bar-container">
+            <div id="progress-bar" class="progress-bar"></div>
+          </div>
+          <div id="progress-text" class="progress-text">0%</div>
+          <div id="progress-detail" class="progress-detail"></div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- New File Modal -->
+    <div id="newfile-modal" class="modal hidden">
+      <div class="modal-content newfile-modal-content">
+        <div class="modal-header">
+          <h2>New File</h2>
+          <button id="newfile-close-btn" class="modal-close">&times;</button>
+        </div>
+        <div class="newfile-body">
+          <label for="newfile-name">File name:</label>
+          <input type="text" id="newfile-name" value="untitled.md" />
+        </div>
+        <div class="newfile-actions">
+          <button id="newfile-ok-btn" class="btn-primary">OK</button>
+          <button id="newfile-clipboard-btn" class="btn-secondary btn-small-text" title="Create with clipboard content">Paste &amp; Create</button>
+          <button id="newfile-cancel-btn" class="btn-secondary">Cancel</button>
         </div>
       </div>
     </div>
