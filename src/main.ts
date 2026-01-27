@@ -4,7 +4,7 @@
  * Supports single-file editing and multi-file project management with mdebook compatibility.
  * 
  * @author fukuyori
- * @version 1.0.0
+ * @version 1.0.1
  */
 
 import * as monaco from 'monaco-editor';
@@ -793,6 +793,17 @@ class MdVimApp {
       if (fileArg && fileArg.value && typeof fileArg.value === 'string') {
         const filePath = fileArg.value;
         console.log('Opening file from CLI:', filePath);
+        
+        // Set filename immediately to avoid "Untitled" flash
+        const displayName = filePath.split(/[/\\]/).pop() || filePath;
+        // For project files, show project title (without extension)
+        if (displayName.endsWith('.mdvim') || displayName.endsWith('.mdebook')) {
+          const projectTitle = displayName.replace(/\.(mdvim|mdebook)$/, '');
+          this.fileNameEl.textContent = projectTitle;
+        } else {
+          this.fileNameEl.textContent = displayName;
+        }
+        this.fileName = displayName;
         
         // Check if it's a URL
         if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
@@ -6028,6 +6039,12 @@ ${htmlContent}
   private async loadMdvim(filePath: string): Promise<void> {
     if (!tauriFs) return;
     
+    // Set filename and project title immediately to avoid "Untitled" flash
+    const displayName = filePath.split(/[/\\]/).pop() || filePath;
+    const projectTitle = displayName.replace(/\.(mdvim|mdebook)$/, '');
+    this.fileName = displayName;
+    this.fileNameEl.textContent = projectTitle;
+    
     try {
       const content = await tauriFs.readFile(filePath);
       const zip = await JSZip.loadAsync(content);
@@ -6109,6 +6126,20 @@ ${htmlContent}
     // mdvim v2 project format
     this.projectState.isProject = true;
     this.projectState.projectPath = filePath;
+    
+    // Update project title from filename if it's a default name
+    const fileNameFromPath = filePath.split(/[/\\]/).pop() || 'project.mdvim';
+    const projectTitleFromFile = fileNameFromPath.replace(/\.(mdvim|mdebook)$/, '');
+    const currentTitle = manifest.metadata?.title || '';
+    const defaultTitles = ['New Project', 'Untitled', 'chapter-1', ''];
+    if (defaultTitles.includes(currentTitle)) {
+      if (!manifest.metadata) {
+        manifest.metadata = { title: projectTitleFromFile };
+      } else {
+        manifest.metadata.title = projectTitleFromFile;
+      }
+    }
+    
     this.projectState.manifest = manifest;
     this.projectState.files.clear();
     this.projectState.modifiedFiles.clear();
@@ -6196,6 +6227,15 @@ ${htmlContent}
    * @private
    */
   private async loadMdebookFromZip(zip: JSZip, filePath: string, mdeManifest: any): Promise<void> {
+    // Update project title from filename if it's a default name
+    const fileNameFromPath = filePath.split(/[/\\]/).pop() || 'project.mdebook';
+    const projectTitleFromFile = fileNameFromPath.replace(/\.(mdvim|mdebook)$/, '');
+    let projectTitle = mdeManifest.metadata?.title || '';
+    const defaultTitles = ['New Project', 'Untitled', 'Imported Project', 'chapter-1', ''];
+    if (defaultTitles.includes(projectTitle)) {
+      projectTitle = projectTitleFromFile;
+    }
+    
     // Convert to mdvim format
     const manifest: ProjectManifest = {
       version: '2.0',
@@ -6203,7 +6243,7 @@ ${htmlContent}
       created: new Date().toISOString(),
       modified: new Date().toISOString(),
       metadata: {
-        title: mdeManifest.metadata?.title || 'Imported Project',
+        title: projectTitle,
         author: mdeManifest.metadata?.author,
         description: mdeManifest.metadata?.description,
         language: mdeManifest.metadata?.language,
@@ -6508,6 +6548,18 @@ ${htmlContent}
     const manifestText = await manifestFile.async('string');
     const manifest: ProjectManifest = JSON.parse(manifestText);
     
+    // Update project title from filename if it's a default name
+    const projectTitleFromFile = file.name.replace(/\.(mdvim|mdebook)$/, '');
+    const currentTitle = manifest.metadata?.title || '';
+    const defaultTitles = ['New Project', 'Untitled', 'chapter-1', ''];
+    if (defaultTitles.includes(currentTitle)) {
+      if (!manifest.metadata) {
+        manifest.metadata = { title: projectTitleFromFile };
+      } else {
+        manifest.metadata.title = projectTitleFromFile;
+      }
+    }
+    
     // Initialize project state
     this.projectState.isProject = true;
     this.projectState.projectPath = file.name;
@@ -6583,6 +6635,14 @@ ${htmlContent}
     const manifestText = await manifestFile.async('string');
     const mdeManifest = JSON.parse(manifestText);
     
+    // Update project title from filename if it's a default name
+    const projectTitleFromFile = file.name.replace(/\.(mdvim|mdebook)$/, '');
+    let projectTitle = mdeManifest.metadata?.title || '';
+    const defaultTitles = ['New Project', 'Untitled', 'Imported Project', 'chapter-1', ''];
+    if (defaultTitles.includes(projectTitle)) {
+      projectTitle = projectTitleFromFile;
+    }
+    
     // Convert to mdvim format
     const manifest: ProjectManifest = {
       version: '2.0',
@@ -6590,7 +6650,7 @@ ${htmlContent}
       created: new Date().toISOString(),
       modified: new Date().toISOString(),
       metadata: {
-        title: mdeManifest.metadata?.title || 'Imported Project',
+        title: projectTitle,
         author: mdeManifest.metadata?.author,
         description: mdeManifest.metadata?.description,
         language: mdeManifest.metadata?.language,
@@ -6776,10 +6836,13 @@ ${htmlContent}
         await tauriFs.writeFile(filePath, content);
         this.projectState.projectPath = filePath;
         
-        // Update project title from filename if it's still "New Project"
+        // Update project title from filename if it's a default name
         const savedFileName = filePath.split(/[/\\]/).pop() || 'project.mdvim';
-        if (this.projectState.manifest && this.projectState.manifest.metadata.title === 'New Project') {
-          this.projectState.manifest.metadata.title = savedFileName.replace(/\.(mdvim|mdebook)$/, '');
+        const projectTitleFromFile = savedFileName.replace(/\.(mdvim|mdebook)$/, '');
+        const currentTitle = this.projectState.manifest?.metadata?.title || '';
+        const defaultTitles = ['New Project', 'Untitled', 'chapter-1', ''];
+        if (this.projectState.manifest && defaultTitles.includes(currentTitle)) {
+          this.projectState.manifest.metadata.title = projectTitleFromFile;
         }
         
         // Update display
