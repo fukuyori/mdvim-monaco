@@ -4,7 +4,7 @@
  * Supports single-file editing and multi-file project management with mdebook compatibility.
  * 
  * @author fukuyori
- * @version 1.0.1
+ * @version 1.0.2
  */
 
 import * as monaco from 'monaco-editor';
@@ -747,14 +747,18 @@ class MdVimApp {
     if (!this.projectState.isProject) return;
     
     const id = this.generateUUID();
-    const name = fileName.replace(/\.md$/, '').replace(/\.markdown$/, '');
+    const originalName = fileName.replace(/\.md$/, '').replace(/\.markdown$/, '');
+    
+    // Get unique name if duplicate exists
+    const name = this.getUniqueFileName(originalName);
+    const finalFileName = `${name}.md`;
     
     // Get max order
     const maxOrder = Math.max(0, ...Array.from(this.projectState.files.values()).map(f => f.order ?? 0));
     
     const newFile: EditorFile = {
       id,
-      path: fileName.endsWith('.md') ? fileName : fileName + '.md',
+      path: finalFileName,
       name,
       content,
       modified: true,
@@ -767,7 +771,7 @@ class MdVimApp {
     if (this.projectState.manifest) {
       this.projectState.manifest.files.push({
         id,
-        path: newFile.path,
+        path: finalFileName,
         name,
         order: maxOrder + 1,
       });
@@ -777,7 +781,7 @@ class MdVimApp {
     this.openFileInProject(id);
     this.updateProjectUI();
     
-    this.fileStatus.textContent = `(imported: ${fileName})`;
+    this.fileStatus.textContent = `(imported: ${finalFileName})`;
     setTimeout(() => {
       this.fileStatus.textContent = this.projectState.modifiedFiles.size > 0 ? '(modified)' : '';
     }, 2000);
@@ -1431,7 +1435,7 @@ Enjoy editing!
           this.fileStatus.textContent = '(clipboard is empty)';
           return;
         }
-        this.createNewFileInProject(fileName, content);
+        this.createNewFileInProject(fileName, content, true); // autoRename=true
         this.fileStatus.textContent = '(created from clipboard)';
         setTimeout(() => {
           if (this.fileStatus.textContent === '(created from clipboard)') {
@@ -2432,17 +2436,20 @@ Enjoy editing!
     }
     
     const content = await tauriFs.readTextFile(filePath);
-    const fileName = filePath.split(/[/\\]/).pop() || 'imported.md';
+    const originalFileName = filePath.split(/[/\\]/).pop() || 'imported.md';
     
     // If in project mode, add as new file
     if (this.projectState.isProject) {
       const id = this.generateUUID();
-      const name = fileName.replace(/\.md$/, '');
+      // Get unique name if duplicate exists
+      const baseName = originalFileName.replace(/\.md$/, '');
+      const name = this.getUniqueFileName(baseName);
+      const fullName = `${name}.md`;
       const maxOrder = Math.max(0, ...Array.from(this.projectState.files.values()).map(f => f.order ?? 0));
       
       const file: EditorFile = {
         id,
-        path: fileName,
+        path: fullName,
         name,
         content,
         modified: true,
@@ -2455,7 +2462,7 @@ Enjoy editing!
       if (this.projectState.manifest) {
         this.projectState.manifest.files.push({
           id,
-          path: fileName,
+          path: fullName,
           name,
           order: maxOrder + 1,
         });
@@ -2464,12 +2471,12 @@ Enjoy editing!
       this.buildFileTree();
       this.openFileInProject(id);
       this.updateProjectUI();
-      this.fileStatus.textContent = `(imported: ${fileName})`;
+      this.fileStatus.textContent = `(imported: ${fullName})`;
     } else {
       // Single file mode - open the file
       this.editor.setValue(content);
       this.currentFilePath = filePath;
-      this.fileName = fileName;
+      this.fileName = originalFileName;
       this.fileNameEl.textContent = this.fileName;
       this.modified = false;
       this.fileStatus.textContent = '';
@@ -2617,7 +2624,22 @@ Enjoy editing!
       hash = ((hash << 5) - hash) + char;
       hash = hash & hash;
     }
-    return `web-${Math.abs(hash).toString(16)}`;
+    const baseId = `web-${Math.abs(hash).toString(16)}`;
+    
+    // Check for duplicates and add suffix if needed
+    if (!this.images.has(baseId) && !this.images.has(`${baseId}.png`) && !this.images.has(`${baseId}.jpg`)) {
+      return baseId;
+    }
+    
+    let counter = 2;
+    let id = `${baseId}_${counter}`;
+    while (this.images.has(id) || this.images.has(`${id}.png`) || this.images.has(`${id}.jpg`)) {
+      counter++;
+      id = `${baseId}_${counter}`;
+      if (counter > 1000) break;
+    }
+    
+    return id;
   }
 
   private getExtensionFromMime(mimeType: string): string {
@@ -2789,6 +2811,18 @@ Enjoy editing!
     
     const fileName = this.newFileNameInput.value.trim();
     if (!fileName) return;
+    
+    // Check for duplicate name in project mode
+    if (this.projectState.isProject) {
+      const name = fileName.replace(/\.md$/, '');
+      if (this.isFileNameDuplicate(name)) {
+        this.fileStatus.textContent = `(error: "${name}" already exists)`;
+        setTimeout(() => {
+          this.fileStatus.textContent = '';
+        }, 3000);
+        return;
+      }
+    }
     
     let content = '';
     if (fromClipboard) {
@@ -5678,11 +5712,29 @@ ${htmlContent}
   // ========== Image Management ==========
 
   private generateImageId(filename: string): string {
-    // Generate short hash from timestamp + random
-    const hash = Math.random().toString(36).substring(2, 10);
     const baseName = filename.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
     const ext = filename.match(/\.[^.]+$/)?.[0] || '.png';
-    return `${baseName}_${hash}${ext}`;
+    
+    // First try without hash
+    let id = `${baseName}${ext}`;
+    if (!this.images.has(id)) {
+      return id;
+    }
+    
+    // If exists, try with numeric suffix
+    let counter = 2;
+    id = `${baseName}_${counter}${ext}`;
+    while (this.images.has(id)) {
+      counter++;
+      id = `${baseName}_${counter}${ext}`;
+      // Safety limit - fall back to hash
+      if (counter > 1000) {
+        const hash = Math.random().toString(36).substring(2, 10);
+        return `${baseName}_${hash}${ext}`;
+      }
+    }
+    
+    return id;
   }
 
   private getMimeType(filename: string): string {
@@ -5834,10 +5886,12 @@ ${htmlContent}
         // Add to project with .md extension
         try {
           const content = await file.text();
-          const mdFileName = file.name.replace(/\.txt$/, '.md');
+          const originalName = file.name.replace(/\.txt$/, '');
           
           const id = this.generateUUID();
-          const name = mdFileName.replace(/\.md$/, '');
+          // Get unique name if duplicate exists
+          const name = this.getUniqueFileName(originalName);
+          const mdFileName = `${name}.md`;
           const maxOrder = Math.max(0, ...Array.from(this.projectState.files.values()).map(f => f.order ?? 0));
           
           const newFile: EditorFile = {
@@ -5886,9 +5940,12 @@ ${htmlContent}
     
     try {
       const content = await file.text();
-      const fileName = file.name;
+      const originalName = file.name.replace(/\.md$/, '');
       const id = this.generateUUID();
-      const name = fileName.replace(/\.md$/, '');
+      
+      // Get unique name if duplicate exists
+      const name = this.getUniqueFileName(originalName);
+      const fileName = `${name}.md`;
       
       // Get max order
       const maxOrder = Math.max(0, ...Array.from(this.projectState.files.values()).map(f => f.order ?? 0));
@@ -6261,10 +6318,53 @@ ${htmlContent}
     this.projectState.history = [];
     this.projectState.historyIndex = -1;
     
-    // Load files from chapters array in manifest (preserving order)
+    // Load files - prefer 'files' array if available (preserves IDs), fall back to 'chapters'
     const chaptersFolder = zip.folder('chapters');
     
-    if (chaptersFolder && mdeManifest.chapters) {
+    if (chaptersFolder && mdeManifest.files && Array.isArray(mdeManifest.files)) {
+      // New format with file IDs
+      for (const fileEntry of mdeManifest.files) {
+        const chapterName = fileEntry.path;
+        const escapedName = this.encodeUnicodeFilename(chapterName);
+        
+        const possiblePaths = [
+          `chapters/${chapterName}`,
+          `chapters/${escapedName}`,
+        ];
+        
+        let chFile = null;
+        for (const path of possiblePaths) {
+          chFile = zip.file(path);
+          if (chFile) break;
+        }
+        
+        if (chFile) {
+          const content = await chFile.async('string');
+          const id = fileEntry.id || this.generateUUID();
+          const displayName = fileEntry.name || chapterName.replace(/\.md$/, '');
+          const order = fileEntry.order ?? manifest.files.length;
+          
+          manifest.files.push({
+            id: id,
+            path: chapterName,
+            name: displayName,
+            order: order,
+          });
+          
+          this.projectState.files.set(id, {
+            id: id,
+            path: chapterName,
+            name: displayName,
+            content: content,
+            modified: false,
+            order: order,
+          });
+        } else {
+          console.warn(`Chapter file not found: ${chapterName}`);
+        }
+      }
+    } else if (chaptersFolder && mdeManifest.chapters) {
+      // Legacy format - load from chapters array
       let order = 0;
       for (const chapterName of mdeManifest.chapters) {
         
@@ -6668,9 +6768,53 @@ ${htmlContent}
     this.projectState.history = [];
     this.projectState.historyIndex = -1;
     
-    // Load files from chapters array in manifest (preserving order)
+    // Load files - prefer 'files' array if available (preserves IDs), fall back to 'chapters'
     const chaptersFolder = zip.folder('chapters');
-    if (chaptersFolder && mdeManifest.chapters) {
+    
+    if (chaptersFolder && mdeManifest.files && Array.isArray(mdeManifest.files)) {
+      // New format with file IDs
+      for (const fileEntry of mdeManifest.files) {
+        const chapterName = fileEntry.path;
+        const escapedName = this.encodeUnicodeFilename(chapterName);
+        
+        const possiblePaths = [
+          `chapters/${chapterName}`,
+          `chapters/${escapedName}`,
+        ];
+        
+        let chFile = null;
+        for (const path of possiblePaths) {
+          chFile = zip.file(path);
+          if (chFile) break;
+        }
+        
+        if (chFile) {
+          const content = await chFile.async('string');
+          const id = fileEntry.id || this.generateUUID();
+          const displayName = fileEntry.name || chapterName.replace(/\.md$/, '');
+          const order = fileEntry.order ?? manifest.files.length;
+          
+          manifest.files.push({
+            id: id,
+            path: chapterName,
+            name: displayName,
+            order: order,
+          });
+          
+          this.projectState.files.set(id, {
+            id: id,
+            path: chapterName,
+            name: displayName,
+            content: content,
+            modified: false,
+            order: order,
+          });
+        } else {
+          console.warn(`Chapter file not found: ${chapterName}`);
+        }
+      }
+    } else if (chaptersFolder && mdeManifest.chapters) {
+      // Legacy format - load from chapters array
       let order = 0;
       for (const chapterName of mdeManifest.chapters) {
         // Try to find the file with Unicode-escaped name
@@ -6789,7 +6933,26 @@ ${htmlContent}
     const sortedFiles = Array.from(this.projectState.files.values())
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     
-    // Create mdebook-compatible manifest
+    // Handle duplicate filenames by adding suffix
+    const filenameCounts = new Map<string, number>();
+    const uniqueFilenames = new Map<string, string>(); // fileId -> unique filename
+    
+    for (const file of sortedFiles) {
+      let baseName = file.path.endsWith('.md') ? file.path : `${file.path}.md`;
+      const count = filenameCounts.get(baseName) || 0;
+      
+      if (count > 0) {
+        // Add suffix for duplicate names: untitled.md -> untitled_2.md
+        const ext = baseName.endsWith('.md') ? '.md' : '';
+        const nameWithoutExt = baseName.replace(/\.md$/, '');
+        baseName = `${nameWithoutExt}_${count + 1}${ext}`;
+      }
+      
+      filenameCounts.set(file.path.endsWith('.md') ? file.path : `${file.path}.md`, count + 1);
+      uniqueFilenames.set(file.id, baseName);
+    }
+    
+    // Create mdebook-compatible manifest with file IDs
     const manifest = this.projectState.manifest;
     const mdeManifest = {
       version: manifest.version || '2.0',
@@ -6798,15 +6961,22 @@ ${htmlContent}
         author: manifest.metadata.author || '',
         language: manifest.metadata.language || 'ja',
       },
-      chapters: sortedFiles.map(f => f.path.endsWith('.md') ? f.path : `${f.path}.md`),
+      chapters: sortedFiles.map(f => uniqueFilenames.get(f.id) || f.path),
+      // Store file details for accurate restoration
+      files: sortedFiles.map(f => ({
+        id: f.id,
+        path: uniqueFilenames.get(f.id) || f.path,
+        name: f.name,
+        order: f.order ?? 0,
+      })),
       images: Array.from(this.images.keys()),
     };
     
     zip.file('manifest.json', JSON.stringify(mdeManifest, null, 2));
     
-    // Add files to chapters/ folder
+    // Add files to chapters/ folder with unique names
     for (const file of sortedFiles) {
-      const filename = file.path.endsWith('.md') ? file.path : `${file.path}.md`;
+      const filename = uniqueFilenames.get(file.id) || (file.path.endsWith('.md') ? file.path : `${file.path}.md`);
       zip.file(`chapters/${filename}`, file.content);
     }
     
@@ -7617,6 +7787,15 @@ ${htmlContent}
     const displayName = newName.replace(/\.md$/, '');
     const pathName = newName.endsWith('.md') ? newName : `${newName}.md`;
     
+    // Check for duplicate name (excluding current file)
+    if (this.isFileNameDuplicate(displayName, fileId)) {
+      this.fileStatus.textContent = `(error: "${displayName}" already exists)`;
+      setTimeout(() => {
+        this.fileStatus.textContent = '';
+      }, 3000);
+      return;
+    }
+    
     // Update file
     file.name = displayName;
     file.path = pathName;
@@ -7646,6 +7825,50 @@ ${htmlContent}
     setTimeout(() => {
       this.fileStatus.textContent = '';
     }, 2000);
+  }
+
+  /**
+   * Checks if a file name already exists in the project
+   * @param name - The file name to check (without .md extension)
+   * @param excludeFileId - Optional file ID to exclude from check (for rename operations)
+   * @returns true if the name is a duplicate
+   * @private
+   */
+  private isFileNameDuplicate(name: string, excludeFileId?: string): boolean {
+    for (const [fileId, file] of this.projectState.files) {
+      if (excludeFileId && fileId === excludeFileId) continue;
+      if (file.name.toLowerCase() === name.toLowerCase()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Generates a unique file name by adding a numeric suffix if needed
+   * @param baseName - The base file name (without .md extension)
+   * @returns A unique file name that doesn't exist in the project
+   * @private
+   */
+  private getUniqueFileName(baseName: string): string {
+    // Remove .md extension if present
+    let name = baseName.replace(/\.md$/, '');
+    
+    if (!this.isFileNameDuplicate(name)) {
+      return name;
+    }
+    
+    // Try adding numeric suffix
+    let counter = 2;
+    let uniqueName = `${name}_${counter}`;
+    while (this.isFileNameDuplicate(uniqueName)) {
+      counter++;
+      uniqueName = `${name}_${counter}`;
+      // Safety limit
+      if (counter > 1000) break;
+    }
+    
+    return uniqueName;
   }
 
   /**
@@ -7875,7 +8098,7 @@ ${htmlContent}
     this.fileStatus.textContent = '(new project)';
   }
 
-  private createNewFileInProject(fileName: string, initialContent: string = ''): void {
+  private createNewFileInProject(fileName: string, initialContent: string = '', autoRename: boolean = false): void {
     if (!this.projectState.isProject) {
       // Convert current single file to project
       this.convertToProject();
@@ -7883,15 +8106,32 @@ ${htmlContent}
     
     // Ensure .md extension
     const fullName = fileName.endsWith('.md') ? fileName : `${fileName}.md`;
+    let name = fullName.replace(/\.md$/, '');
+    
+    // Check for duplicate name
+    if (this.isFileNameDuplicate(name)) {
+      if (autoRename) {
+        // Auto-generate unique name for imports/paste
+        name = this.getUniqueFileName(name);
+      } else {
+        // Show error for manual creation
+        this.fileStatus.textContent = `(error: "${name}" already exists)`;
+        setTimeout(() => {
+          this.fileStatus.textContent = '';
+        }, 3000);
+        return;
+      }
+    }
+    
     const id = this.generateUUID();
-    const name = fullName.replace(/\.md$/, '');
+    const finalFullName = `${name}.md`;
     
     // Get max order
     const maxOrder = Math.max(0, ...Array.from(this.projectState.files.values()).map(f => f.order ?? 0));
     
     const file: EditorFile = {
       id,
-      path: fullName,
+      path: finalFullName,
       name,
       content: initialContent,
       modified: initialContent.length > 0,
@@ -7904,7 +8144,7 @@ ${htmlContent}
     if (this.projectState.manifest) {
       this.projectState.manifest.files.push({
         id,
-        path: fullName,
+        path: finalFullName,
         name,
         order: maxOrder + 1,
       });
