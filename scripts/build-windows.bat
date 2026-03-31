@@ -1,9 +1,17 @@
 @echo off
+setlocal
 REM mdvim Windows Build Script
 REM Requires: Node.js, Rust, Visual Studio Build Tools
 
 echo === mdvim Windows Build Script ===
 echo.
+
+set CLEAN_BUILD=0
+
+if /I "%~1"=="--clean" set CLEAN_BUILD=1
+if /I "%~1"=="-c" set CLEAN_BUILD=1
+if /I "%~1"=="--help" goto :help
+if /I "%~1"=="-h" goto :help
 
 REM Check Node.js
 where node >nul 2>nul
@@ -45,15 +53,18 @@ set PROJECT_DIR=%SCRIPT_DIR%..
 REM Change to project directory
 cd /d "%PROJECT_DIR%"
 
-REM Clean previous build
-if exist node_modules rmdir /s /q node_modules
-if exist src-tauri\target rmdir /s /q src-tauri\target
+REM Clean previous build if requested
+if "%CLEAN_BUILD%"=="1" (
+    echo Cleaning previous build artifacts...
+    if exist node_modules rmdir /s /q node_modules
+    if exist src-tauri\target rmdir /s /q src-tauri\target
+)
 
-REM Install npm dependencies
+REM Install npm dependencies from lockfile
 echo Installing npm dependencies...
-call npm install
+call npm ci
 if %ERRORLEVEL% neq 0 (
-    echo Error: npm install failed
+    echo Error: npm ci failed
     exit /b 1
 )
 
@@ -80,5 +91,12 @@ echo.
 echo To run after installation:
 echo   mdvim
 echo   mdvim file.md
+echo   mdvim -e
 
-pause
+exit /b 0
+
+:help
+echo Usage: scripts\build-windows.bat [--clean]
+echo.
+echo   --clean    Remove node_modules and src-tauri\target before building
+exit /b 0

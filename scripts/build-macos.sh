@@ -7,6 +7,16 @@ set -e
 echo "=== mdvim macOS Build Script ==="
 echo ""
 
+CLEAN_BUILD=0
+if [[ "${1:-}" == "--clean" || "${1:-}" == "-c" ]]; then
+    CLEAN_BUILD=1
+elif [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    echo "Usage: ./scripts/build-macos.sh [--clean]"
+    echo ""
+    echo "  --clean    Remove node_modules and src-tauri/target before building"
+    exit 0
+fi
+
 # Check Xcode Command Line Tools
 if ! xcode-select -p &> /dev/null; then
     echo "Installing Xcode Command Line Tools..."
@@ -46,13 +56,16 @@ echo ""
 echo "=== Building mdvim ==="
 cd "$PROJECT_DIR"
 
-# Clean previous build
-rm -rf node_modules
-rm -rf src-tauri/target
+# Clean previous build if requested
+if [[ "$CLEAN_BUILD" -eq 1 ]]; then
+    echo "Cleaning previous build artifacts..."
+    rm -rf node_modules
+    rm -rf src-tauri/target
+fi
 
-# Install npm dependencies
+# Install npm dependencies from lockfile
 echo "Installing npm dependencies..."
-npm install
+npm ci
 
 # Build Tauri app
 echo "Building Tauri app..."
@@ -73,3 +86,4 @@ echo ""
 echo "To run:"
 echo "  /Applications/mdvim.app/Contents/MacOS/mdvim"
 echo "  Or open from Applications folder"
+echo "  /Applications/mdvim.app/Contents/MacOS/mdvim -e"

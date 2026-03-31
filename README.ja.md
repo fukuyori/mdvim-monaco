@@ -63,8 +63,8 @@ scripts\build-windows.bat
 git clone https://github.com/user/mdvim-monaco.git
 cd mdvim-monaco
 
-# 依存関係をインストール
-npm install
+# 依存関係をlockfileからインストール
+npm ci
 
 # 開発モード
 npm run dev

@@ -115,6 +115,11 @@ interface Settings {
   autoSaveInterval: number;
 }
 
+interface CliArgMatch {
+  value?: unknown;
+  occurrences?: number;
+}
+
 /**
  * Embedded image data for storage in project files
  * @interface EmbeddedImage
@@ -404,6 +409,8 @@ class MdVimApp {
     autoSave: false,
     autoSaveInterval: 30,
   };
+  /** View mode override provided by command-line argument for current launch only */
+  private cliViewModeOverride: ViewMode | null = null;
   
   // ========== State ==========
   
@@ -792,6 +799,13 @@ class MdVimApp {
     
     try {
       const matches = await tauriCli.getMatches();
+      const cliViewMode = this.getCliViewMode(matches.args);
+      if (cliViewMode) {
+        this.cliViewModeOverride = cliViewMode;
+        this.settings.viewMode = cliViewMode;
+        this.applyViewMode(cliViewMode);
+      }
+
       const fileArg = matches.args['file'];
       
       if (fileArg && fileArg.value && typeof fileArg.value === 'string') {
@@ -819,6 +833,28 @@ class MdVimApp {
     } catch (err) {
       console.log('No CLI arguments or error:', err);
     }
+  }
+
+  private getCliViewMode(args: Record<string, CliArgMatch | undefined>): ViewMode | null {
+    if (this.hasCliFlag(args, 'preview', 'v')) return 'preview';
+    if (this.hasCliFlag(args, 'editor', 'e')) return 'editor';
+    if (this.hasCliFlag(args, 'split', 's')) return 'split';
+    return null;
+  }
+
+  private hasCliFlag(args: Record<string, CliArgMatch | undefined>, ...names: string[]): boolean {
+    for (const name of names) {
+      if (!(name in args)) continue;
+
+      const arg = args[name];
+      if (!arg) return true;
+      if (typeof arg.occurrences === 'number' && arg.occurrences > 0) return true;
+      if (typeof arg.value === 'boolean') return arg.value;
+      if (arg.value === null) return true;
+      if (arg.value !== undefined) return true;
+    }
+
+    return false;
   }
 
   private calculateFontSize(): number {
@@ -917,6 +953,9 @@ Enjoy editing!
       const content = await tauriFs.readTextFile(configPath);
       const s: Partial<Settings> = JSON.parse(content);
       this.settings = { ...this.settings, ...s };
+      if (this.cliViewModeOverride) {
+        this.settings.viewMode = this.cliViewModeOverride;
+      }
       this.applySettings();
       console.log('Settings loaded from:', configPath);
     } catch {
@@ -4487,6 +4526,11 @@ ${htmlContent}
    */
   private setViewMode(mode: ViewMode): void {
     this.settings.viewMode = mode;
+    this.applyViewMode(mode);
+    this.saveSettings();
+  }
+
+  private applyViewMode(mode: ViewMode): void {
     document.getElementById('app')!.dataset.viewMode = mode;
 
     document.querySelectorAll('[data-view]').forEach(btn => {
@@ -4494,7 +4538,6 @@ ${htmlContent}
     });
 
     setTimeout(() => this.editor.layout(), 0);
-    this.saveSettings();
   }
 
   /**

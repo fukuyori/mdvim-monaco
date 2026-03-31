@@ -22,7 +22,7 @@ pub struct FileInfo {
 fn get_app_info() -> serde_json::Value {
     serde_json::json!({
         "name": "mdvim",
-        "version": "0.9.0",
+        "version": "1.1.0",
         "platform": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
     })

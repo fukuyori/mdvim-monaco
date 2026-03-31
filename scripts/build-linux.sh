@@ -7,6 +7,16 @@ set -e
 echo "=== mdvim Linux Build Script ==="
 echo ""
 
+CLEAN_BUILD=0
+if [[ "${1:-}" == "--clean" || "${1:-}" == "-c" ]]; then
+    CLEAN_BUILD=1
+elif [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    echo "Usage: ./scripts/build-linux.sh [--clean]"
+    echo ""
+    echo "  --clean    Remove node_modules and src-tauri/target before building"
+    exit 0
+fi
+
 # Check if running as root
 if [ "$EUID" -eq 0 ]; then
     echo "Error: Do not run this script as root"
@@ -22,6 +32,14 @@ if [ -f /etc/os-release ]; then
 else
     echo "Warning: Cannot detect distribution"
     DISTRO="unknown"
+fi
+
+if [[ "$DISTRO" != "ubuntu" && "$DISTRO" != "debian" ]]; then
+    echo "Error: This script currently supports Ubuntu/Debian only."
+    echo "Install the required Tauri system packages manually, then run:"
+    echo "  npm ci"
+    echo "  npm run tauri build"
+    exit 1
 fi
 
 # Install dependencies
@@ -73,13 +91,16 @@ echo ""
 echo "=== Building mdvim ==="
 cd "$PROJECT_DIR"
 
-# Clean previous build
-rm -rf node_modules
-rm -rf src-tauri/target
+# Clean previous build if requested
+if [[ "$CLEAN_BUILD" -eq 1 ]]; then
+    echo "Cleaning previous build artifacts..."
+    rm -rf node_modules
+    rm -rf src-tauri/target
+fi
 
-# Install npm dependencies
+# Install npm dependencies from lockfile
 echo "Installing npm dependencies..."
-npm install
+npm ci
 
 # Build Tauri app
 echo "Building Tauri app..."
@@ -101,3 +122,4 @@ echo ""
 echo "To run:"
 echo "  mdvim"
 echo "  mdvim <file.md>"
+echo "  mdvim -e"

@@ -22,6 +22,8 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
   libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 ```
 
+The provided Linux build script currently supports Ubuntu/Debian only.
+
 ---
 
 ## Build Commands
@@ -29,8 +31,8 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
 ### Quick Build (All Platforms)
 
 ```bash
-# Install dependencies
-npm install
+# Install dependencies from lockfile
+npm ci
 
 # Build installer
 npm run tauri build
@@ -41,16 +43,19 @@ npm run tauri build
 **Windows:**
 ```cmd
 scripts\build-windows.bat
+scripts\build-windows.bat --clean
 ```
 
 **macOS:**
 ```bash
 ./scripts/build-macos.sh
+./scripts/build-macos.sh --clean
 ```
 
 **Linux:**
 ```bash
 ./scripts/build-linux.sh
+./scripts/build-linux.sh --clean
 ```
 
 ---
@@ -207,7 +212,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
           
       - name: Install npm dependencies
-        run: npm install
+        run: npm ci
         
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0

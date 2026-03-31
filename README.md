@@ -63,8 +63,8 @@ scripts\build-windows.bat
 git clone https://github.com/user/mdvim-monaco.git
 cd mdvim-monaco
 
-# Install dependencies
-npm install
+# Install dependencies from the lockfile
+npm ci
 
 # Development
 npm run dev
