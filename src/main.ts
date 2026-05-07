@@ -4,7 +4,7 @@
  * Supports single-file editing and multi-file project management with mdebook compatibility.
  * 
  * @author fukuyori
- * @version 1.0.2
+ * @version 1.1.1
  */
 
 import * as monaco from 'monaco-editor';
@@ -347,6 +347,7 @@ let tauriEvent: typeof import('@tauri-apps/api/event') | null = null;
 let tauriPath: typeof import('@tauri-apps/api/path') | null = null;
 let tauriHttp: typeof import('@tauri-apps/plugin-http') | null = null;
 let tauriCli: typeof import('@tauri-apps/plugin-cli') | null = null;
+let tauriCore: typeof import('@tauri-apps/api/core') | null = null;
 
 async function loadTauriApis() {
   try {
@@ -356,6 +357,7 @@ async function loadTauriApis() {
     tauriPath = await import('@tauri-apps/api/path');
     tauriHttp = await import('@tauri-apps/plugin-http');
     tauriCli = await import('@tauri-apps/plugin-cli');
+    tauriCore = await import('@tauri-apps/api/core');
     console.log('Tauri APIs loaded');
   } catch {
     console.log('Running in browser mode (Tauri APIs not available)');
@@ -593,12 +595,13 @@ class MdVimApp {
     this.updateToc();
 
     // Load Tauri APIs and setup file drop listener
-    loadTauriApis().then(() => {
-      this.setupTauriFileDrop();
+    loadTauriApis().then(async () => {
+      await this.setupTauriFileDrop();
+      await this.setupSystemOpenFiles();
       // Load settings from config file after Tauri APIs are available
-      this.loadSettingsFromFile();
+      await this.loadSettingsFromFile();
       // Handle command line arguments
-      this.handleCliArgs();
+      await this.handleCliArgs();
     });
     
     // Initialize auto-save
@@ -741,6 +744,40 @@ class MdVimApp {
       console.log('Tauri drag-drop listener registered');
     } catch (err) {
       console.log('Failed to setup Tauri drag-drop:', err);
+    }
+  }
+
+  private async setupSystemOpenFiles(): Promise<void> {
+    if (!tauriEvent || !tauriCore) return;
+
+    try {
+      await tauriEvent.listen<string[]>('mdvim://open-files', async (event) => {
+        const paths = Array.isArray(event.payload) ? event.payload : [];
+        await this.openSystemPaths(paths);
+
+        try {
+          await tauriCore!.invoke<string[]>('take_pending_open_files');
+        } catch (err) {
+          console.warn('Failed to clear pending open files:', err);
+        }
+      });
+
+      const pendingPaths = await tauriCore.invoke<string[]>('take_pending_open_files');
+      await this.openSystemPaths(Array.isArray(pendingPaths) ? pendingPaths : []);
+    } catch (err) {
+      console.warn('Failed to setup system open file handling:', err);
+    }
+  }
+
+  private async openSystemPaths(paths: string[]): Promise<void> {
+    for (const path of paths) {
+      if (!path) continue;
+
+      if (path.startsWith('http://') || path.startsWith('https://')) {
+        await this.fetchMarkdownFromUrl(path);
+      } else {
+        await this.openFileByPath(path);
+      }
     }
   }
   
@@ -2159,19 +2196,42 @@ Enjoy editing!
       // Read as binary for encoding detection
       const binaryData = await tauriFs.readFile(resolvedPath);
       const content = this.decodeWithAutoDetect(new Uint8Array(binaryData));
-      
-      this.editor.setValue(content);
-      this.currentFilePath = resolvedPath;
-      this.currentDirectory = this.getDirectoryFromPath(resolvedPath);
-      this.fileName = resolvedPath.split(/[/\\]/).pop() || 'Untitled';
-      this.fileNameEl.textContent = this.fileName;
-      this.modified = false;
-      this.fileStatus.textContent = '';
-      this.images.clear();
+      this.openSingleMarkdownContent(resolvedPath, content);
     } catch (err) {
       this.fileStatus.textContent = `(file not found: ${filePath})`;
       console.error('Failed to open file:', err);
     }
+  }
+
+  private resetProjectStateForSingleFile(): void {
+    this.projectState = {
+      isProject: false,
+      projectPath: null,
+      manifest: null,
+      files: new Map(),
+      fileTree: [],
+      activeFileId: null,
+      openTabs: [],
+      modifiedFiles: new Set(),
+      history: [],
+      historyIndex: -1,
+    };
+  }
+
+  private openSingleMarkdownContent(filePath: string, content: string): void {
+    this.resetProjectStateForSingleFile();
+    this.editor.setValue(content);
+    this.currentFilePath = filePath;
+    this.currentDirectory = this.getDirectoryFromPath(filePath);
+    this.fileName = filePath.split(/[/\\]/).pop() || 'Untitled';
+    this.fileNameEl.textContent = this.fileName;
+    this.modified = false;
+    this.fileStatus.textContent = '';
+    this.images.clear();
+    this.updateLayoutForSingleFile();
+    this.updatePreview();
+    this.updateToc();
+    this.updateStats();
   }
 
   private async fetchMarkdownFromUrl(url: string): Promise<void> {
@@ -5581,34 +5641,29 @@ ${htmlContent}
       defaultPath
     });
 
-    if (filePath && typeof filePath === 'string') {
+    const selectedPath = Array.isArray(filePath) ? filePath[0] : filePath;
+
+    if (selectedPath && typeof selectedPath === 'string') {
       // Check if it's a URL (user might paste URL in file dialog)
-      if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-        await this.fetchMarkdownFromUrl(filePath);
+      if (selectedPath.startsWith('http://') || selectedPath.startsWith('https://')) {
+        await this.fetchMarkdownFromUrl(selectedPath);
         return;
       }
       
       // Check if it's a .mdvim or .mdebook file
-      if (filePath.endsWith('.mdvim') || filePath.endsWith('.mdebook')) {
-        await this.loadMdvim(filePath);
-        this.currentDirectory = this.getDirectoryFromPath(filePath);
+      if (selectedPath.endsWith('.mdvim') || selectedPath.endsWith('.mdebook')) {
+        await this.loadMdvim(selectedPath);
+        this.currentDirectory = this.getDirectoryFromPath(selectedPath);
         return;
       }
       
       try {
         // Read as binary for encoding detection
-        const binaryData = await tauriFs.readFile(filePath);
+        const binaryData = await tauriFs.readFile(selectedPath);
         const content = this.decodeWithAutoDetect(new Uint8Array(binaryData));
-        
-        this.editor.setValue(content);
-        this.currentFilePath = filePath;
-        this.currentDirectory = this.getDirectoryFromPath(filePath);
-        this.fileName = filePath.split(/[/\\]/).pop() || 'Untitled';
-        this.fileNameEl.textContent = this.fileName;
-        this.modified = false;
-        this.fileStatus.textContent = '';
-        this.images.clear(); // Clear images when loading plain markdown
+        this.openSingleMarkdownContent(selectedPath, content);
       } catch (err) {
+        this.fileStatus.textContent = `(open failed: ${selectedPath.split(/[/\\]/).pop() || selectedPath})`;
         console.error('Failed to open file:', err);
       }
     }
@@ -6204,7 +6259,7 @@ ${htmlContent}
       }
     }
     
-    this.projectState.isProject = false;
+    this.resetProjectStateForSingleFile();
     this.currentFilePath = filePath;
     this.fileName = filePath.split(/[/\\]/).pop() || 'Untitled';
     this.fileNameEl.textContent = this.fileName;
@@ -6631,10 +6686,7 @@ ${htmlContent}
     const buffer = await file.arrayBuffer();
     const content = this.decodeWithAutoDetect(new Uint8Array(buffer));
     
-    this.projectState.isProject = false;
-    this.projectState.manifest = null;
-    this.projectState.files.clear();
-    this.projectState.openTabs = [];
+    this.resetProjectStateForSingleFile();
     
     this.editor.setValue(content);
     this.fileName = file.name;
@@ -6651,8 +6703,7 @@ ${htmlContent}
     const text = await file.text();
     const data = JSON.parse(text);
     
-    this.projectState.isProject = false;
-    this.projectState.manifest = null;
+    this.resetProjectStateForSingleFile();
     
     this.editor.setValue(data.content || '');
     this.fileName = file.name;
